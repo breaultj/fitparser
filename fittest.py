@@ -1,6 +1,8 @@
 import os
 import fitConstants as fit
 import fittypes as fittypes
+import struct
+from datetime import datetime
 
 headerRecord = 0
 headerLength = 12
@@ -13,6 +15,48 @@ fileHeaderCRC = 0
 localMessageDict = {}       # stores the definition based on the local message number as an index
 timeOffset = 0
 lastTimeStamp = 0
+
+#****************************************
+# Convert from bytes to a given type
+#****************************************
+def convertBytes(byteList,numBytes,fromType,endian):
+    date_type = ['local_date_time','date_time']
+    single_byte_type = ['enum','sint8','uint8','unit8z','byte']
+    multi_byte_type = ['uint16','uint32','uint16z','uint32z','uint64','uint64z']
+    signed_multi_byte_type = ['sint16','sint32','sint64']
+    string_type = ['string']
+    float_type = ['float32','float64']
+            
+    if date_type.count(fromType) > 0:
+        timestamp = int.from_bytes(byteList,endian,signed=False)
+        dt_object = datetime.fromtimestamp(timestamp)
+        return dt_object
+    elif single_byte_type.count(fromType) > 0:
+        return int.from_bytes(byteList,endian,signed=False)
+    elif multi_byte_type.count(fromType) > 0:
+        return int.from_bytes(byteList,endian,signed=False)
+    elif signed_multi_byte_type.count(fromType) > 0:
+        return int.from_bytes(byteList,endian,signed=True)
+    elif string_type.count(fromType) > 0:
+        resultString = ""
+        for i in range(numBytes):
+            resultString += chr(byteList[i])
+            return resultString
+    elif float_type.count(fromType) > 0:
+        return struct.unpack('f', byteList)
+    else:
+        if fromType in fittypes.type_dict:
+            fitTypeDict = fittypes.type_dict[fromType]
+            keyValue = int.from_bytes(byteList,endian,signed=False)
+            if keyValue in fitTypeDict:
+                return fitTypeDict[keyValue]
+            else:
+                unknownString = str(keyValue)
+                return "Unknown " + unknownString
+        else:
+            retString = str(int.from_bytes(byteList,endian,signed=False))
+            return "Not Found " + retString
+# end of convertBytes
 
 #*************************
 # read a file header record
@@ -194,14 +238,17 @@ def processDataRecord():
         # read the number of bytes as defined in the definitio record
         dataContents = bytearray(f.read(bytesToRead))
         byte_count = byte_count + bytesToRead
-        print("Data",df,dataDict["FieldDesc"],"Number of Bytes",bytesToRead)
-
+        
+        # call to convertBytes
+        dataValue = convertBytes(dataContents,bytesToRead,dataDict["MesgType"],dataDict["EndianOrder"])
+        print(dataDict["FieldDesc"],"Size",bytesToRead,"Data",dataValue)
+    
     # return the number of bytes read
     return byte_count
 # end of processDataRecord()
 
 # *****************************    
-# process a compressed record
+# process a compressed record  
 # *****************************
 def processCompressedRecord():
     global fieldDefinitionList
